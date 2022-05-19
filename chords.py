@@ -1,7 +1,10 @@
+from typing import Tuple, NoReturn
+
 import librosa
 import librosa.display
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.typing import ArrayLike, NDArray
 from scipy import spatial
 from sklearn.preprocessing import normalize
 
@@ -16,7 +19,7 @@ class ChordsExtractor:
         self._nc_sensitivity_coef = nc_coef
         self._seventh_sensitivity_coef = seventh_coef
 
-    def _print_chord(self, mask):
+    def _print_chord(self, mask: Tuple[float]) -> str:
         """
         gets chord name
 
@@ -25,7 +28,7 @@ class ChordsExtractor:
         """
         return self._chords_masks[mask]
 
-    def plt_chord_masks(self, cols, height=60, width=60):
+    def plt_chord_masks(self, cols: int, height=60, width=60) -> NoReturn:
         """
         visualize chord masks
 
@@ -50,7 +53,7 @@ class ChordsExtractor:
 
         plt.show()
 
-    def process_composition_librosa(self, path):
+    def process_composition_librosa(self, path: str) -> Tuple[ArrayLike[int], NDArray[float], ArrayLike[float], float]:
         """
         calculate all necessary librosa features for given composition
 
@@ -68,7 +71,8 @@ class ChordsExtractor:
 
         return beats, chroma_stft, chords_time, duration
 
-    def get_chords_per_frame(self, chroma_stft, beats, chords_time, total_duration):
+    def get_chords_per_frame(self, chroma_stft: NDArray[float], beats: ArrayLike[int], chords_time: ArrayLike[float],
+                             total_duration: float) -> Tuple[ArrayLike[str], ArrayLike[float]]:
         """
         calculates chords for each interval (from beat to beat)
 
@@ -111,7 +115,7 @@ class ChordsExtractor:
 
         return chords, times
 
-    def process_composition(self, path):
+    def process_composition(self, path: str) -> Tuple[ArrayLike[str], ArrayLike[float]]:
         """
         the whole pipeline of processing composition from audio file
 
@@ -121,7 +125,9 @@ class ChordsExtractor:
         beats, chroma_stft, chords_time, total_duration = self.process_composition_librosa(path)
         return self.get_chords_per_frame(chroma_stft.T, beats, chords_time, total_duration)
 
-    def process_composition_from_dataset(self, chroma, beats, chords_time, total_duration):
+    def process_composition_from_dataset(
+            self, chroma: NDArray[float], beats: ArrayLike[int], chords_time: ArrayLike[float], total_duration: float) \
+            -> Tuple[ArrayLike[str], ArrayLike[float]]:
         """
         the whole pipeline of processing dataset entry with precalculated features
 

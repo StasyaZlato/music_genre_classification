@@ -1,0 +1,7 @@
+librosa==0.9.1
+matplotlib==3.4.3
+networkx==2.6.3
+numpy==1.22.3
+scikit_learn==1.1.0
+scipy==1.7.1
+simplicial==0.7.2
