@@ -1,5 +1,6 @@
 import operator
 from itertools import combinations
+from sklearn.preprocessing import normalize
 
 
 def sort_index(lst, rev=True):
@@ -59,3 +60,10 @@ def get_gauss_form(matrix):
         matrix[col] = column
         left_low_els.append(low)
     return matrix.T
+
+
+def normalize_dict_values(dct):
+    keys = dct.keys()
+    values = normalize([[dct[key] for key in keys]], axis=1, norm="max")[0]
+
+    return {keys[i]: values[i] for i in range(len(keys))}

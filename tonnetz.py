@@ -5,11 +5,10 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 from simplicial import Filtration
-from sklearn.preprocessing import normalize
 
 from chords_masks import get_triads_base_masks
 from constants import PITCH_CLASSES
-from utils import get_combinations, get_gauss_form, get_low
+from utils import get_combinations, get_gauss_form, get_low, normalize_dict_values
 
 
 class Tonnetz:
@@ -342,6 +341,12 @@ class Tonnetz:
         return self._get_reference_y_pitch_class(y_chord, x_chord), self._get_reference_y_pitch_class(x_chord, y_chord)
 
     def _place_first_chord(self, chord):
+        """
+        finds the position for the first chord in the initial coordinates (rectangle 3x4 with C = (0,0))
+
+        :param chord: list of pc in chord
+        :return: dict with positions of all pc in chord
+        """
         x = chord[0]
         pos = self._initial_grid[x]
         to_place = set(chord) - {x}
@@ -349,6 +354,13 @@ class Tonnetz:
         return self._place_pc(list(to_place), placed)
 
     def _place_chord_on_prev(self, prev_placed, to_place):
+        """
+        finds the position for the pitch classes in chord depending on previously placed pitch classes
+
+        :param prev_placed: dict of previously placed pc mapped to their positions
+        :param to_place: list of pc to place
+        :return: position of chord to_place
+        """
         x_ref, y_ref = self._get_reference_pitch_classes(list(prev_placed.keys()), to_place)
         y_pos = self._place_pc([y_ref], {x_ref: prev_placed[x_ref]})
 
@@ -357,6 +369,12 @@ class Tonnetz:
         return self._place_pc(list(set(to_place) - {y_ref}), y_pos)
 
     def _construct_tonnetz_for_chords(self, chords):
+        """
+        construct graph representation of Tonnetz for given chords
+
+        :param chords: list of chords with already calculated positions
+        :return: Tonnetz graph
+        """
         tonnetz = nx.Graph()
         for chord_positions in chords:
             intervals = list(
@@ -371,6 +389,12 @@ class Tonnetz:
         return tonnetz
 
     def _get_compact_tonnetz(self, t1, t2):
+        """
+        compares to Tonnetz graphs in terms of compactness (number of connected components and diameter)
+
+        :param t1: :param t2: Tonnetz graph
+        :return: 0 if the first graph is more compact 1 otherwise
+        """
         cc1 = len(list(nx.connected_components(t1)))
         cc2 = len(list(nx.connected_components(t2)))
         if cc1 < cc2:
@@ -389,6 +413,21 @@ class Tonnetz:
         return 0
 
     def _place_chord_optimal(self, prev_placed0, prev_placed1, to_place, next_to_place):
+        """
+        finds the optimal position for the chord with respect to previously_previously placed chord and the next chord
+        (i.e. to place chord C_n it considers C_{n-2}, C_{n-1} and C_{n+1})
+        The algorithm:
+        - find position of C_n depending on C_{n-1}
+        - find position of C_{n+1} depending on C_{n-1}
+        - find position of C_n depending on C_{n+1} (as they are neighbours in the chords sequence)
+        - compare compactness of the grapsh {C_{n-2}, C_{n-1}, C_n} and {C_{n-2}, C_{n-1}, C_n'}
+
+        :param prev_placed0: chord C_{n-2}
+        :param prev_placed1: chord C_{n-1}
+        :param to_place: chord C_n
+        :param next_to_place: chord C_{n+1}
+        :return: optimal position of C_n
+        """
         pos0 = self._place_chord_on_prev(prev_placed1, to_place)
         pos_next = self._place_chord_on_prev(prev_placed1, next_to_place)
         pos1 = self._place_chord_on_prev(pos_next, to_place)
@@ -401,6 +440,12 @@ class Tonnetz:
         return pos1
 
     def get_trajectory(self, chords):
+        """
+        get positions for all the chords
+
+        :param chords: sequence of chords (each is a list of pc)
+        :return: the trajectory, i.e. the list of chords for each of which the positions of pc are given
+        """
         trajectory = [self._place_first_chord(chords[0])]
 
         if len(chords) == 1:
@@ -419,6 +464,11 @@ class Tonnetz:
         return trajectory
 
     def plot_trajectory(self, trajectory):
+        """
+        plot the trajectory using matplotlib
+
+        :param trajectory: the list of chords for each of which the positions of pc are given
+        """
         for positions in trajectory:
 
             intervals = list(
@@ -436,19 +486,25 @@ class Tonnetz:
         plt.show()
 
     def _get_key(self, positions):
+        """
+        get id for the simplex with given vertices / edges
+        :param positions: coordinates of vertices
+        :return: string id representation
+        """
         str_values = []
         for pos in positions:
             str_values.append(str(pos[0]) + "_" + str(pos[1]))
 
         return ";".join(str_values)
 
-    def _normalize_dict_values(self, dct):
-        keys = dct.keys()
-        values = normalize([[dct[key] for key in keys]], axis=1, norm="max")[0]
-
-        return {keys[i]: values[i] for i in range(len(keys))}
-
     def _get_simplices_from_trajectory(self, trajectory, durations):
+        """
+        get dict of simplices with their weights from the trajectory
+
+        :param trajectory: the list of chords for each of which the positions of pc are given
+        :param durations: list of durations for each chord
+        :return: dict of simplices with their normalized weight
+        """
         simplices_0d = {}  # pc
         simplices_1d = {}  # intervals
         simplices_2d = {}  # chords
@@ -480,9 +536,15 @@ class Tonnetz:
         simplices = dict(simplices_0d, **simplices_1d)
         simplices.update(simplices_2d)
 
-        return self._normalize_dict_values(simplices)
+        return normalize_dict_values(simplices)
 
     def get_filtration_for_trajectory(self, dict_durations):
+        """
+        build Filtration on the simplices dict
+
+        :param dict_durations: dict of simplices with their weights
+        :return: Filtration
+        """
         simplices_by_step = sorted(self._get_filtration(dict_durations).items(), key=lambda x: x[0])
 
         filtration = Filtration()
@@ -514,6 +576,13 @@ class Tonnetz:
         return filtration
 
     def _build_filtration_on_tonnetz_trajectory(self, chords, durations):
+        """
+        build filtration for sequence of chords with durations
+
+        :param chords: sequence of chords
+        :param durations: chords durations
+        :return: Filtration
+        """
         assert len(chords) == len(durations)
         trajectory = self.get_trajectory(chords)
         simplices = self._get_simplices_from_trajectory(trajectory, durations)
@@ -523,6 +592,13 @@ class Tonnetz:
     # ---------- Persistence ----------
 
     def _get_simplices_of_order(self, filtration, order):
+        """
+        find all simplices of given order with respect to their birth time
+
+        :param filtration: Filtration
+        :param order: order (or dimension) of simplex
+        :return: list of simplexes of given order
+        """
         simplices = []
         simplices_of_order_set = filtration.simplicesOfOrder(order)
         for simplex in filtration.simplices():
@@ -531,6 +607,13 @@ class Tonnetz:
         return simplices
 
     def compute_persistence(self, filtration, k=1):
+        """
+        compute persistence diagram on the filtration
+
+        :param filtration: Filtration
+        :param k: over which dimension to compute diagram
+        :return: array of birth-death pairs
+        """
         gaussian_form = get_gauss_form(filtration.boundaryOperator(k=k).T)
         low_indexes = {i: get_low(gaussian_form[:, i]) for i in range(gaussian_form.shape[1])}
 
