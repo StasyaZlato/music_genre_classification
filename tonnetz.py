@@ -504,7 +504,7 @@ class Tonnetz:
         return ";".join(str_values)
 
     def _get_simplices_from_trajectory(self, trajectory: List[VerticesDict], durations: ArrayLike[float]) \
-            -> Dict[str, float]:
+            -> dict[Hashable, float]:
         """
         get dict of simplices with their weights from the trajectory
 
@@ -545,7 +545,7 @@ class Tonnetz:
 
         return normalize_dict_values(simplices)
 
-    def get_filtration_for_trajectory(self, dict_durations: Dict[str, float]) -> Filtration:
+    def get_filtration_for_trajectory(self, dict_durations: Dict[Hashable, float]) -> Filtration:
         """
         build Filtration on the simplices dict
 
