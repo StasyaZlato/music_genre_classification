@@ -1,5 +1,6 @@
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, NoReturn
 
+import matplotlib.pyplot as plt
 import numpy as np
 from numpy.typing import ArrayLike
 from sklearn.preprocessing import normalize
@@ -10,7 +11,7 @@ SEVENTH = {"_dom7": (4, 7, 10), "_min7": (3, 7, 10), "_maj7": (4, 7, 11), "_half
 HARMONICS_COEFFICIENT = 0.5
 
 
-def get_harmonics(mask: ArrayLike[int]) -> List[List[int]]:
+def get_harmonics(mask: ArrayLike) -> List[List[int]]:
     """
     Defines the harmonics that sound simultaneously with the fundamental notes of chord.
     For a pitch class harmonic is a pc with frequency that is multiple of the fundamental, but with lower intensity.
@@ -100,7 +101,7 @@ def get_seventh_mask(index: int) -> Dict[str, List[int]]:
     return masks
 
 
-def get_mask_with_harmonics(mask: List[int]) -> ArrayLike[float]:
+def get_mask_with_harmonics(mask: List[int]) -> ArrayLike:
     """
     updates a binary masks with harmonics
 
@@ -154,3 +155,30 @@ def get_triads_base_masks() -> Dict[str, List[int]]:
     base_masks["N"] = no_chord
 
     return base_masks
+
+
+def plt_chord_masks(cols: int, height=60, width=60) -> NoReturn:
+    """
+    visualize chord masks
+
+    :param width: width of figure
+    :param height: height of figure
+    :param cols: number of columns in grid
+    """
+    chords_masks = get_triads_masks()
+    chords = list(chords_masks.keys())
+    rows = len(chords) // cols
+    fig, axs = plt.subplots(rows, cols)
+    fig.set_figheight(height)
+    fig.set_figwidth(width)
+
+    index = 0
+    for row in range(rows):
+        for col in range(cols):
+            if index >= len(chords) - 1:
+                break
+            axs[row, col].bar(PITCH_CLASSES, chords[index])
+            axs[row, col].set_title(chords_masks[chords[index]])
+            index += 1
+
+    plt.show()

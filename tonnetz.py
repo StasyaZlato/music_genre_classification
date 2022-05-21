@@ -1,12 +1,13 @@
 from collections import Counter
 from itertools import combinations, permutations
-from typing import List, Dict, Union, Tuple, NoReturn, Hashable
+from typing import List, Dict, Union, Tuple, NoReturn, Hashable, Sequence
 
 import matplotlib.pyplot as plt
 import networkx as nx
 import numpy as np
 from numpy.typing import ArrayLike
 from simplicial import Filtration
+from persim import PersistenceImager
 
 from chords_masks import get_triads_base_masks
 from constants import PITCH_CLASSES
@@ -26,7 +27,14 @@ class Tonnetz:
             self._tonnetz_axis = {"x": self._tonnetz[0], "y": self._tonnetz[1], "xy": self._tonnetz[2]}
             self._initial_grid = {i: (i % 3, -i % 4) for i in range(12)}
 
-    def build_filtration(self, chords: ArrayLike[str], durations: ArrayLike[float]) -> Filtration:
+        self._trajectory = None
+        self._persistence_diagram = None
+        self._filtration = None
+        self._pers_img = None
+
+        self._persimg = PersistenceImager()
+
+    def build_filtration(self, chords: ArrayLike, durations: ArrayLike) -> Filtration:
         """
         build simplicial filtration on chords sequence
 
@@ -35,10 +43,12 @@ class Tonnetz:
         :return: Filtration
         """
         if self._tonnetz_type == "frequency":
-            return self._build_tonnetz_filtration_on_frequencies(chords)
+            self._filtration = self._build_tonnetz_filtration_on_frequencies(chords)
+            return self._filtration
         if self._tonnetz_type == "trajectory":
             assert durations is not None, "Duration list can not be None"
-            return self._build_filtration_on_tonnetz_trajectory(chords, durations)
+            self._filtration = self._build_filtration_on_tonnetz_trajectory(chords, durations)
+            return self._filtration
 
     def _get_filtration_level(self, a_max: float, a: float) -> int:
         """
@@ -73,7 +83,7 @@ class Tonnetz:
                 filtration_dict[filtration_step] = [key]
         return filtration_dict
 
-    def _get_pc_indexes(self, chord: str) -> ArrayLike[int]:
+    def _get_pc_indexes(self, chord: str) -> ArrayLike:
         """
         get numerical representation of pitch classes that appear in chord
         :param chord: chord name (str)
@@ -315,7 +325,7 @@ class Tonnetz:
             to_place.remove(y)
         return placed
 
-    def _get_reference_y_pitch_class(self, x_chord: ArrayLike[int], y_chord: ArrayLike[int]) -> int:
+    def _get_reference_y_pitch_class(self, x_chord: Sequence[int], y_chord: Sequence[int]) -> int:
         """
         find the pc from y-chord closest to all the pc in x-chord
 
@@ -334,7 +344,7 @@ class Tonnetz:
             raise ValueError("should choose at least 1 note")
         return cur_pc
 
-    def _get_reference_pitch_classes(self, x_chord: ArrayLike[int], y_chord: ArrayLike[int]) -> Tuple[int, int]:
+    def _get_reference_pitch_classes(self, x_chord: ArrayLike, y_chord: ArrayLike) -> Tuple[int, int]:
         """
         finds a pair of pitch classes one from each chord such that dist(pc_x, chord_y) is the smallest
 
@@ -343,7 +353,7 @@ class Tonnetz:
         """
         return self._get_reference_y_pitch_class(y_chord, x_chord), self._get_reference_y_pitch_class(x_chord, y_chord)
 
-    def _place_first_chord(self, chord: ArrayLike[int]) -> VerticesDict:
+    def _place_first_chord(self, chord: Sequence[int]) -> VerticesDict:
         """
         finds the position for the first chord in the initial coordinates (rectangle 3x4 with C = (0,0))
 
@@ -444,7 +454,7 @@ class Tonnetz:
             return pos0
         return pos1
 
-    def get_trajectory(self, chords: List[ArrayLike[int]]) -> List[VerticesDict]:
+    def _compute_trajectory(self, chords: List[ArrayLike]) -> List[VerticesDict]:
         """
         get positions for all the chords
 
@@ -466,15 +476,15 @@ class Tonnetz:
 
         trajectory.append(self._place_chord_on_prev(trajectory[len(chords) - 2], chords[-1]))
 
-        return trajectory
+        self._trajectory = trajectory
 
-    def plot_trajectory(self, trajectory: List[VerticesDict]) -> NoReturn:
+    def plt_trajectory(self) -> NoReturn:
         """
         plot the trajectory using matplotlib
-
-        :param trajectory: the list of chords for each of which the positions of pc are given
         """
-        for positions in trajectory:
+        assert self._trajectory is not None
+
+        for positions in self._trajectory:
 
             intervals = list(
                 filter(lambda i: (i[0] - i[1]) % 12 in self._tonnetz or (i[1] - i[0]) % 12 in self._tonnetz,
@@ -503,12 +513,11 @@ class Tonnetz:
 
         return ";".join(str_values)
 
-    def _get_simplices_from_trajectory(self, trajectory: List[VerticesDict], durations: ArrayLike[float]) \
+    def _get_simplices_from_trajectory(self, durations: ArrayLike) \
             -> dict[Hashable, float]:
         """
         get dict of simplices with their weights from the trajectory
 
-        :param trajectory: the list of chords for each of which the positions of pc are given
         :param durations: list of durations for each chord
         :return: dict of simplices with their normalized weight
         """
@@ -516,8 +525,8 @@ class Tonnetz:
         simplices_1d = {}  # intervals
         simplices_2d = {}  # chords
 
-        for i in range(len(trajectory)):
-            positions = trajectory[i]
+        for i in range(len(self._trajectory)):
+            positions = self._trajectory[i]
             duration = durations[i]
 
             for pos in positions.values():
@@ -583,8 +592,8 @@ class Tonnetz:
 
         return filtration
 
-    def _build_filtration_on_tonnetz_trajectory(self, chords: ArrayLike[str],
-                                                durations: ArrayLike[float]) -> Filtration:
+    def _build_filtration_on_tonnetz_trajectory(self, chords: ArrayLike,
+                                                durations: ArrayLike) -> Filtration:
         """
         build filtration for sequence of chords with durations
 
@@ -593,45 +602,85 @@ class Tonnetz:
         :return: Filtration
         """
         assert len(chords) == len(durations)
-        trajectory = self.get_trajectory(chords)
-        simplices = self._get_simplices_from_trajectory(trajectory, durations)
+
+        chords_unmapped = [self._get_pc_indexes(chord) for chord in chords]
+
+        self._compute_trajectory(chords_unmapped)
+        simplices = self._get_simplices_from_trajectory(durations)
 
         return self.get_filtration_for_trajectory(simplices)
 
     # ---------- Persistence ----------
 
-    @staticmethod
-    def _get_simplices_of_order(filtration: Filtration, order: int) -> List:
+    def _get_simplices_of_order(self, order: int) -> List:
         """
         find all simplices of given order with respect to their birth time
 
-        :param filtration: Filtration
         :param order: order (or dimension) of simplex
         :return: list of simplexes of given order
         """
+        assert self._filtration is not None
+
         simplices = []
-        simplices_of_order_set = filtration.simplicesOfOrder(order)
-        for simplex in filtration.simplices():
+        simplices_of_order_set = self._filtration.simplicesOfOrder(order)
+        for simplex in self._filtration.simplices():
             if simplex in simplices_of_order_set:
                 simplices.append(simplex)
         return simplices
 
-    def compute_persistence(self, filtration: Filtration, k=1) -> ArrayLike:
+    def compute_persistence(self, k=1) -> ArrayLike:
         """
         compute persistence diagram on the filtration
 
-        :param filtration: Filtration
         :param k: over which dimension to compute diagram
         :return: array of birth-death pairs
         """
-        gaussian_form = get_gauss_form(filtration.boundaryOperator(k=k))
+        assert self._filtration is not None
+
+        gaussian_form = get_gauss_form(self._filtration.boundaryOperator(k=k))
         low_indexes = {i: get_low(gaussian_form[:, i]) for i in range(gaussian_form.shape[1])}
 
-        simplices_k = self._get_simplices_of_order(filtration, k)
-        simplices_km1 = self._get_simplices_of_order(filtration, k - 1)
+        simplices_k = self._get_simplices_of_order(k)
+        simplices_km1 = self._get_simplices_of_order(k - 1)
 
         pairs = [(simplices_k[key], simplices_km1[val]) for key, val in low_indexes.items() if val != -1]
 
-        return np.array(list(filter(lambda x: x[0] != x[1],
-                                    [[filtration.addedAtIndex(pair[1]), filtration.addedAtIndex(pair[0])] for pair in
-                                     pairs])))
+        self._persistence_diagram = np.array(list(filter(lambda x: x[0] != x[1],
+                                    [[self._filtration.addedAtIndex(pair[1]), self._filtration.addedAtIndex(pair[0])]
+                                     for pair in pairs])))
+        return self._persistence_diagram
+
+    def plt_persistence(self) -> NoReturn:
+        assert self._persistence_diagram is not None
+
+        x = [interval[0] for interval in self._persistence_diagram]
+        y = [interval[1] for interval in self._persistence_diagram]
+
+        max_x = max(x)
+        max_y = max(y)
+
+        if max_x > max_y:
+            max_el = max_x
+        else:
+            max_el = max_y
+
+        diagonal = [i for i in range(max_el)]
+
+        plt.plot(x, y, 'ro')
+        plt.plot(diagonal, diagonal, 'b-')
+
+        plt.show()
+
+    def compute_persistence_image(self):
+        assert self._persistence_diagram is not None
+
+        self._pers_img = self._persimg.fit_transform(self._persistence_diagram, skew=True)
+        return self._pers_img
+
+    def plot_persistence_image(self):
+        assert self._persistence_diagram is not None
+
+        if self._pers_img is None:
+            self._pers_img = self.compute_persistence_image()
+
+        self._persimg.plot_image(self._pers_img)

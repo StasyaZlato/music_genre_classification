@@ -32,7 +32,7 @@ def n_max_els(lst: ArrayLike, n: int) -> List[int]:
     return lst
 
 
-def get_combinations(lst: ArrayLike[Any]) -> List[Tuple[Any]]:
+def get_combinations(lst: ArrayLike) -> List[Tuple[Any]]:
     """
     get all combinations of all possible lengths for an lst
 
