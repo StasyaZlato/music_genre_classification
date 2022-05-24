@@ -3,11 +3,13 @@ from itertools import combinations, permutations
 from typing import List, Dict, Union, Tuple, NoReturn, Hashable, Sequence
 
 import matplotlib.pyplot as plt
+from pylab import MaxNLocator
 import networkx as nx
 import numpy as np
 from numpy.typing import ArrayLike
 from simplicial import Filtration
 from persim import PersistenceImager
+import seaborn as sns
 
 from chords_masks import get_triads_base_masks
 from constants import PITCH_CLASSES
@@ -18,7 +20,7 @@ VerticesDict = Dict[int, Point]
 
 
 class Tonnetz:
-    def __init__(self, tonnetz_type="trajectory", filtration_step=0.005):
+    def __init__(self, tonnetz_type="trajectory", filtration_step=0.005, pixel_size=0.2):
         self._base_masks = get_triads_base_masks()
         self._tonnetz_type = tonnetz_type
         self._filtration_step = filtration_step
@@ -32,7 +34,7 @@ class Tonnetz:
         self._filtration = None
         self._pers_img = None
 
-        self._persimg = PersistenceImager()
+        self._persimg = PersistenceImager(pixel_size=pixel_size)
 
     def build_filtration(self, chords: ArrayLike, durations: ArrayLike) -> Filtration:
         """
@@ -63,7 +65,7 @@ class Tonnetz:
         a1 = a_max // self._filtration_step * self._filtration_step
         an = a // self._filtration_step * self._filtration_step
 
-        return round((an - a1) / (-self._filtration_step) + 1)
+        return round((an - a1) / (-self._filtration_step) + 1) # an = (n-1)*step + a1
 
     def _get_filtration(self, weighted_simplices_dict: Dict[Hashable, float]) -> Dict[int, List[Hashable]]:
         """
@@ -464,12 +466,14 @@ class Tonnetz:
         trajectory = [self._place_first_chord(chords[0])]
 
         if len(chords) == 1:
-            return trajectory
+            self._trajectory = trajectory
+            return self._trajectory
 
         trajectory.append(self._place_chord_on_prev(trajectory[0], chords[1]))
 
         if len(chords) == 2:
-            return trajectory
+            self._trajectory = trajectory
+            return self._trajectory
 
         for i in range(2, len(chords) - 1):
             trajectory.append(self._place_chord_optimal(trajectory[i - 2], trajectory[i - 1], chords[i], chords[i + 1]))
@@ -477,6 +481,7 @@ class Tonnetz:
         trajectory.append(self._place_chord_on_prev(trajectory[len(chords) - 2], chords[-1]))
 
         self._trajectory = trajectory
+        return self._trajectory
 
     def plt_trajectory(self) -> NoReturn:
         """
@@ -497,6 +502,14 @@ class Tonnetz:
                 y = [point[1] for point in points]
 
                 plt.plot(x, y, "r-")
+
+        plt.grid()
+        ax = plt.gca()
+        ax.set(xlabel='major third', ylabel='minor third')
+        ax.set_title("Tonnetz trajectory")
+
+        ax.get_yaxis().set_major_locator(MaxNLocator(integer=True))
+        ax.get_xaxis().set_major_locator(MaxNLocator(integer=True))
 
         plt.show()
 
@@ -650,6 +663,20 @@ class Tonnetz:
                                      for pair in pairs])))
         return self._persistence_diagram
 
+    def compute_persistence_merged(self, k_lim = 4) -> ArrayLike:
+        persistence_diagrams = []
+        for k in range(1, k_lim + 1):
+            pers = self.compute_persistence(k)
+            if len(pers) != 0:
+                persistence_diagrams.append(self.compute_persistence(k))
+
+        if len(persistence_diagrams) == 1:
+            self._persistence_diagram = persistence_diagrams[0]
+        elif len(persistence_diagrams) > 0:
+            self._persistence_diagram = np.concatenate(persistence_diagrams)
+
+        return self._persistence_diagram
+
     def plt_persistence(self) -> NoReturn:
         assert self._persistence_diagram is not None
 
@@ -666,8 +693,16 @@ class Tonnetz:
 
         diagonal = [i for i in range(max_el)]
 
-        plt.plot(x, y, 'ro')
-        plt.plot(diagonal, diagonal, 'b-')
+        sns.scatterplot(x=x, y=y, marker='o')
+        sns.lineplot(x=diagonal, y=diagonal)
+
+        plt.grid()
+        ax = plt.gca()
+        ax.set(xlabel='birth', ylabel='death')
+        ax.set_title("Persistence diagram")
+
+        ax.get_yaxis().set_major_locator(MaxNLocator(integer=True))
+        ax.get_xaxis().set_major_locator(MaxNLocator(integer=True))
 
         plt.show()
 
